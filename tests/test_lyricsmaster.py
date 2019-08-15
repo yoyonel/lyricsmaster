@@ -14,8 +14,10 @@ from bs4 import BeautifulSoup, Tag
 
 from lyricsmaster import models
 from lyricsmaster import cli
-from lyricsmaster.providers import LyricWiki, AzLyrics, Genius, Lyrics007, \
-    MusixMatch
+from lyricsmaster.providers import (
+    LyricWiki, AzLyrics, Genius,
+    Lyrics007, MusixMatch
+)
 from lyricsmaster.utils import TorController, normalize
 
 try:
@@ -52,6 +54,9 @@ real_singer = {'name': 'The Notorious B.I.G.', 'album': 'Ready to Die (1994)',
                          {'song': 'Things Done Changed',
                           'lyrics': 'Remember back in the days...'}]
                }
+
+real_fuzzy_singer = {'name': 'Kuti Fela', 'real name': 'Fela Kuti'}
+
 fake_singer = {'name': 'Fake Rapper', 'album': "In my mom's basement",
                'song': 'I fap',
                'lyrics': 'Everyday I fap furiously...'}
@@ -345,6 +350,23 @@ class TestLyricsProviders:
             assert isinstance(discography, models.Discography)
             assert isinstance(discography2, models.Discography)
 
+    @pytest.mark.parametrize('provider', providers)
+    def test_search_artist(self, provider):
+        fuzzy_artist_name = real_fuzzy_singer['name']
+        if provider.name == 'LyricWiki':
+            artist_page = provider.get_artist_page(fuzzy_artist_name)
+            assert artist_page is None
+            artist_page = provider.search_artist_page(fuzzy_artist_name)
+            assert '<!doctype html>' in str(artist_page).lower()
+
+    @pytest.mark.parametrize('provider', providers)
+    def test_get_songs_from_search_artist(self, provider):
+        if provider.name == 'LyricWiki':
+            artist_page = provider.search_artist_page(real_fuzzy_singer['name'])
+            album = provider.get_albums(artist_page)[0]
+            song_links = provider.get_songs(album)
+            for link in song_links:
+                assert isinstance(link, Tag)
 
 
 class TestCli:

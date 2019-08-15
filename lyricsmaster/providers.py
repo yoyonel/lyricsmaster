@@ -36,6 +36,7 @@ except ImportError:
 from .models import Song, Album, Discography
 from .utils import normalize, logger
 
+
 # TODO: advertise the fact that contributors can add new lyrics providers by conforming the Provider metaclass
 class LyricsProvider:
     """
@@ -115,6 +116,18 @@ class LyricsProvider:
         Must be implemented by children classes conforming to the LyricsMaster API.
 
         Builds an url for the artist page of the lyrics provider.
+
+        :param artist: string.
+        :return: string or None.
+        """
+        pass
+
+    @abstractmethod
+    def _make_search_artist_url(self, artist):
+        """
+        Must be implemented by children classes conforming to the LyricsMaster API.
+
+        Builds an url for searching an artist page of the lyrics provider.
 
         :param artist: string.
         :return: string or None.
@@ -249,7 +262,15 @@ class LyricsProvider:
         raw_html = self.get_page(url).data
         artist_page = BeautifulSoup(raw_html.decode('utf-8', 'ignore'), 'lxml')
         if not self._has_artist(artist_page):
-            return None
+            try:
+                alternative_suggestion_artist = artist_page.find(
+                    "div", {'class': 'noarticletext'}
+                ).find(
+                    "span", {'class': 'alternative-suggestion'}
+                ).find("a").attrs['href'].split('/')[-1]
+                return self.get_artist_page(alternative_suggestion_artist)
+            except:
+                return None
         return raw_html
 
     def get_lyrics_page(self, url):
@@ -270,7 +291,7 @@ class LyricsProvider:
             return None
         return raw_html
 
-    def get_lyrics(self, artist, album=None, song=None):
+    def get_lyrics(self, artist, album=None, song=None, pool_size=None):
         """
         This is the main method of this class.
         Connects to the Lyrics Provider and downloads lyrics for all the albums of the supplied artist and songs.
@@ -282,6 +303,8 @@ class LyricsProvider:
             Album title.
         :param song: string.
             Song title.
+        :param pool_size: int.
+            Pool size.
         :return: models.Discography object or None.
         """
 
@@ -311,7 +334,9 @@ class LyricsProvider:
                 self.session = self.tor_controller.get_tor_session()
             if song_links:
                 logger.info('Downloading {0}'.format(album_title))
-                pool = Pool(25)  # Sets the worker pool for async requests. 25 is a nice value to not annoy site owners ;)
+                pool_size = 25 if pool_size is None else pool_size
+                logger.debug("pool_size: %d", pool_size)
+                pool = Pool(size=pool_size)  # Sets the worker pool for async requests. 25 is a nice value to not annoy site owners ;)
                 results = [pool.spawn(self.create_song, *(link, artist, album_title)) for link in song_links]
                 pool.join()  # Gathers results from the pool
                 songs = [song.value for song in results if song.value]
@@ -323,6 +348,23 @@ class LyricsProvider:
                     logger.info('Skipped downloading {0} as no lyrics matched.'.format(album_title))
         discography = Discography(artist, album_objects)
         return discography
+
+    def search_artist_page(self, artist):
+        """
+
+        :param artist:
+        :return:
+        """
+        artist = self._clean_string(artist)
+        url = self._make_search_artist_url(artist)
+        if not url:
+            return None
+        raw_html = self.get_page(url).data
+        search_artist_page = BeautifulSoup(raw_html.decode('utf-8', 'ignore'), 'lxml')
+        found_artist_url = search_artist_page.find("li", {'class': 'result'}).find("a").attrs['href']
+        found_artist = found_artist_url.split('/')[-1]
+        # TODO: test distance between `found_artist` and `artist`
+        return self.get_artist_page(found_artist)
 
 
 class LyricWiki(LyricsProvider):
@@ -353,6 +395,15 @@ class LyricWiki(LyricsProvider):
         :return: string.
         """
         url = self.base_url + '/wiki/' + artist
+        return url
+
+    def _make_search_artist_url(self, artist):
+        """
+
+        :param artist:
+        :return: string.
+        """
+        url = self.base_url + '/wiki/Special:Search?query=%3Aartist+' + artist
         return url
 
     def get_album_page(self, artist, album):
@@ -428,14 +479,15 @@ class LyricWiki(LyricsProvider):
         :param album_title: string.
         :return: models.Song object or None.
         """
+        song_title = link.attrs['title']
+        song_title = song_title[song_title.index(':') + 1:]
+        if '(page does not exist' in song_title:
+            logger.warning(song_title)
+            return None
         if not link.attrs['href'].startswith(self.base_url):
             song_url = self.base_url + link.attrs['href']
         else:
             song_url = link.attrs['href']
-        song_title = link.attrs['title']
-        song_title = song_title[song_title.index(':') + 1:]
-        if '(page does not exist' in song_title:
-            return None
         raw_lyrics_page = self.get_lyrics_page(song_url)
         if not raw_lyrics_page:
             return None
