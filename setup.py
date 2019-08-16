@@ -24,6 +24,7 @@ requirements = [
     'gevent',
     'stem',
     'certifi',
+    'fuzzywuzzy[speedup]==0.17.0',
 ]
 
 setup_requirements = [

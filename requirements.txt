@@ -5,3 +5,4 @@ gevent==1.4.0
 stem==1.7.1
 lxml==4.3.3
 click==7.0
+fuzzywuzzy[speedup]==0.17.0
