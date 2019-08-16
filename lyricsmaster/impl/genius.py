@@ -1,5 +1,5 @@
 import time
-import urllib
+from typing import Dict, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 
 from lyricsmaster.lyrics_providers import LyricsProvider
 from lyricsmaster.models import Song
-# from lyricsmaster.utils import normalize
 
 
 class Genius(LyricsProvider):
@@ -44,6 +43,52 @@ class Genius(LyricsProvider):
         else:
             return False
 
+    @staticmethod
+    def _get_item_from_search_response(response, type_) -> Dict:
+        """
+        Genius API:
+        - https://docs.genius.com/#/getting-started-h1
+        - https://github.com/johnwmillr/LyricsGenius/blob/master/lyricsgenius/api.py
+
+        :param type_:
+        :return:
+        """
+        """ Returns either a Song or Artist result from search_genius_web """
+        # Convert list to dictionary
+        hits = response['sections'][0]['hits']
+        if hits:
+            tophit = hits[0]
+            if tophit['type'] == type_:
+                return tophit['result']
+
+        # Check rest of results if top hit wasn't the search type
+        sections = sorted(response['sections'],
+                          key=lambda sect: sect['type'] == type_,
+                          reverse=True)
+        gen_hits = (
+            hit
+            for section in sections
+            for hit in section['hits']
+            if hit['type'] == type_
+        )
+        first_result = next(gen_hits)
+        return first_result['result']
+
+    @staticmethod
+    def search_genius_web(search_term, per_page=5) -> Optional[Dict]:
+        """Use the web-version of Genius search"""
+        endpoint = "search/multi?"
+        params = {'per_page': per_page, 'q': search_term}
+
+        # This endpoint is not part of the API, requires different formatting
+        url = "https://genius.com/api/" + endpoint + urlencode(params)
+        _SLEEP_MIN = 0.2
+        timeout = 5
+        sleep_time = 0.5
+        response = requests.get(url, timeout=timeout)
+        time.sleep(max(_SLEEP_MIN, sleep_time))
+        return response.json()['response'] if response else None
+
     def _make_artist_url(self, artist):
         """
         Builds an url for the artist page of the lyrics provider.
@@ -55,44 +100,8 @@ class Genius(LyricsProvider):
         # url = self.base_url + '/artists/' + artist
         # return url
         # return self.search(artist)['url']
-
-        # Genius API:
-        # https://docs.genius.com/#/getting-started-h1
-        # https://github.com/johnwmillr/LyricsGenius/blob/master/lyricsgenius/api.py
-        def _get_item_from_search_response(response, type_):
-            """ Returns either a Song or Artist result from search_genius_web """
-            # Convert list to dictionary
-            hits = response['sections'][0]['hits']
-            if hits:
-                tophit = hits[0]
-                if tophit['type'] == type_:
-                    return tophit['result']
-
-            # Check rest of results if top hit wasn't the search type
-            sections = sorted(response['sections'],
-                              key=lambda sect: sect['type'] == type_,
-                              reverse=True)
-            for section in sections:
-                hits = [hit for hit in section['hits'] if hit['type'] == type_]
-                if hits:
-                    return hits[0]['result']
-
-        def search_genius_web(search_term, per_page=5):
-            """Use the web-version of Genius search"""
-            endpoint = "search/multi?"
-            params = {'per_page': per_page, 'q': search_term}
-
-            # This endpoint is not part of the API, requires different formatting
-            url = "https://genius.com/api/" + endpoint + urlencode(params)
-            _SLEEP_MIN = 0.2
-            timeout = 5
-            sleep_time = 0.5
-            response = requests.get(url, timeout=timeout)
-            time.sleep(max(_SLEEP_MIN, sleep_time))
-            return response.json()['response'] if response else None
-
-        found_artist = _get_item_from_search_response(
-            response=search_genius_web(artist),
+        found_artist = self._get_item_from_search_response(
+            response=self.search_genius_web(artist),
             type_="artist"
         )
 
@@ -231,15 +240,15 @@ class Genius(LyricsProvider):
         :return: string.
             Cleaned text.
         """
-        # text = normalize(text).lower().capitalize()
-        # text = urllib.parse.quote(text)
         return text
 
     def _extract_artists_from_search(self, search_results_page):
         target_node = search_results_page.find("div", {'id': 'search_result'})
-        return [{
-            'url': self.base_url + node_a.attrs['href'],
-            'name': node_a.get_text()}
+        return [
+            {
+                'url': self.base_url + node_a.attrs['href'],
+                'name': node_a.get_text()
+            }
             for node_a in map(lambda node: node.find('a'),
                               target_node.find_all('h2'))
         ]

@@ -7,11 +7,13 @@ All lyrics providers inherit from the base class LyricsProvider.
 
 """
 
-# We use abstract methods to ensure that all future classes inheriting from LyricsProvider will
-# implement the required methods in order to have a nice and consistent API.
+# We use abstract methods to ensure that all future classes inheriting from
+# LyricsProvider will implement the required methods in order to have a nice and
+# consistent API.
 
-# We use gevent in order to make asynchronous http requests while downloading lyrics.
-# It is also used to patch the socket module to use SOCKS5 instead to interface with the Tor controller.
+# We use gevent in order to make asynchronous http requests while downloading
+# lyrics. It is also used to patch the socket module to use SOCKS5 instead to
+# interface with the Tor controller.
 
 # Python 2.7 compatibility
 # Works for Python 2 and 3

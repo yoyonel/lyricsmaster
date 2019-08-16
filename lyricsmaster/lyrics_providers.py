@@ -332,7 +332,8 @@ class LyricsProvider:
                 pool = Pool(size=pool_size)
                 results = [
                     pool.spawn(self.create_song, *(link, artist, album_title))
-                    for link in song_links]
+                    for link in song_links
+                ]
                 pool.join()  # Gathers results from the pool
                 songs = [song.value for song in results if song.value]
                 if songs:
